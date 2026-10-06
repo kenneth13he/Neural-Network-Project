@@ -53,7 +53,7 @@
         py.FS.writeFile(name, code);
       }
       py.runPython(`
-from train import make_dataset, make_model, train_step, predict, accuracy
+from train import make_dataset, make_model, train_step, predict, predict_fast, accuracy
 dots = make_dataset(30)
 model = make_model(2, ${LAYERS})
 centers = [-1 + (i + 0.5) * 2 / ${GRID} for i in range(${GRID})]
@@ -78,7 +78,7 @@ centers = [-1 + (i + 0.5) * 2 / ${GRID} for i in range(${GRID})]
       if (dotCount() === 0) return;
       const [loss, acc] = py.runPython(`
 for _ in range(${n}):
-    loss = train_step(model, dots, ${LR})
+    loss = train_step(model, dots, ${LR / (1 + step / 500)})
 [loss, accuracy(model, dots)]
 `).toJs();
       step += n;
@@ -108,7 +108,7 @@ for _ in range(${n}):
     function drawBoard() {
       ctx.clearRect(0, 0, SIZE, SIZE);
 
-      const grid = py.runPython('[[predict(model, x, y) for x in centers] for y in centers]').toJs();
+      const grid = py.runPython('[[predict_fast(model, x, y) for x in centers] for y in centers]').toJs();
       const cell = SIZE / GRID;
       for (let row = 0; row < GRID; row++) {
         for (let col = 0; col < GRID; col++) {
