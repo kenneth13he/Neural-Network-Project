@@ -51,6 +51,33 @@ def predict_fast(model, x, y):
     return inputs[0]
 
 
+def get_weights(model):
+    layers = []
+    for layer in model.layers:
+        neurons = []
+        for neuron in layer.neurons:
+            neurons.append({'w': [w.data for w in neuron.w], 'b': neuron.b.data})
+        layers.append(neurons)
+    return layers
+
+
+def all_activations(model, x, y):
+    inputs = [x, y]
+    every_layer = []
+    for layer in model.layers:
+        outputs = []
+        for neuron in layer.neurons:
+            total = neuron.b.data
+            for w, inp in zip(neuron.w, inputs):
+                total += w.data * inp
+            if neuron.nonlin:
+                total = math.tanh(total)
+            outputs.append(total)
+        every_layer.append(outputs)
+        inputs = outputs
+    return every_layer
+
+
 def accuracy(model, dots):
     correct = 0
     for x, y, label in dots:
