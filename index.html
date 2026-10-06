@@ -3,60 +3,518 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Backprop Playground</title>
+  <title>Neural Network Trainer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@500;700;800;900&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/pyodide/v0.27.8/full/pyodide.js"></script>
+  <style>
+    :root {
+      --paper: #f4f1ea;
+      --panel: #ffffff;
+      --ink: #1d1d1b;
+      --ink-soft: #5c5a55;
+      --line: #dcd7cc;
+      --blue: #2a78d6;
+      --red: #e34948;
+      --yellow: #ffd23f;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--paper);
+      color: var(--ink);
+      font-family: 'Nunito', system-ui, sans-serif;
+      font-weight: 500;
+    }
+    .page { max-width: 1100px; margin: 0 auto; padding: 28px 16px 48px; }
+
+    h1 { font-size: clamp(28px, 4vw, 40px); font-weight: 900; margin: 0 0 4px; letter-spacing: -0.02em; }
+    .subtitle { margin: 0 0 22px; color: var(--ink-soft); font-size: 17px; }
+    .blue-word { color: var(--blue); font-weight: 800; }
+    .red-word { color: var(--red); font-weight: 800; }
+
+    .toolbar {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px;
+      margin-bottom: 18px;
+    }
+    button {
+      font: 800 16px 'Nunito', sans-serif;
+      color: var(--ink);
+      background: var(--panel);
+      border: 2px solid var(--ink);
+      border-radius: 12px;
+      padding: 9px 16px;
+      box-shadow: 0 3px 0 var(--ink);
+      cursor: pointer;
+      transition: transform 0.05s, box-shadow 0.05s;
+    }
+    button:active:not(:disabled) { transform: translateY(3px); box-shadow: 0 0 0 var(--ink); }
+    button:disabled { opacity: 0.4; cursor: default; }
+    button.go { background: var(--yellow); min-width: 120px; font-size: 18px; }
+
+    .stats { display: flex; gap: 22px; margin-left: auto; }
+    .stat { line-height: 1.1; }
+    .stat .label { font-size: 13px; color: var(--ink-soft); font-weight: 700; }
+    .stat .value { font-size: 24px; font-weight: 900; font-variant-numeric: tabular-nums; min-width: 72px; display: block; }
+
+    .stage { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 18px; align-items: start; }
+    @media (max-width: 900px) {
+      .stage { grid-template-columns: 1fr; }
+      .stats { margin-left: 0; }
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 2px solid var(--line);
+      border-radius: 18px;
+      padding: 14px;
+      position: relative;
+    }
+    .panel-title { font-size: 15px; font-weight: 800; margin: 0 0 10px; }
+
+    .placing { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+    .placing-label { font-weight: 800; font-size: 15px; margin-right: 2px; }
+    button.pick {
+      display: inline-flex; align-items: center; gap: 8px;
+      font-size: 15px; padding: 6px 14px; border-color: var(--line); box-shadow: 0 3px 0 var(--line);
+    }
+    button.pick[aria-pressed="true"] { border-color: var(--ink); box-shadow: 0 3px 0 var(--ink); background: #fff8d6; }
+    .swatch-dot, .swatch-square { width: 13px; height: 13px; display: inline-block; }
+    .swatch-dot { border-radius: 50%; background: var(--blue); }
+    .swatch-square { border-radius: 2px; background: var(--red); }
+    .hint { margin: 10px 2px 0; color: var(--ink-soft); font-size: 14px; }
+    .side { display: grid; gap: 18px; }
+
+    canvas { display: block; width: 100%; }
+    #board { aspect-ratio: 1; border-radius: 10px; cursor: crosshair; background: #fff; }
+    #network { aspect-ratio: 440 / 320; }
+    #loss-chart { aspect-ratio: 440 / 130; }
+
+    .tooltip {
+      position: absolute; display: none; pointer-events: none; z-index: 2;
+      background: var(--ink); color: #fff; font-size: 13px; font-weight: 700;
+      padding: 5px 9px; border-radius: 8px; white-space: nowrap;
+    }
+    #message { font-weight: 700; color: var(--ink-soft); }
+    footer { margin-top: 28px; color: var(--ink-soft); font-size: 13px; }
+    footer a { color: inherit; }
+  </style>
 </head>
 <body>
+  <div class="page">
+    <h1>Watch a neural network learn</h1>
+    <p class="subtitle">
+      Tap the board to place <span class="blue-word">blue dots</span> and <span class="red-word">red squares</span>.
+      Press Train and watch the network learn to separate them.
+    </p>
 
-  <h1>Back propagation online visualization with neural network training</h1>
-  <p> Visualize machine learning model using back propagation to separate dots of 2 colours</p>
+    <div class="toolbar">
+      <button id="train-button" class="go" disabled>Train</button>
+      <button id="clear-button" disabled>Clear dots</button>
+      <button id="reset-button" disabled>New network</button>
+      <span id="message">Loading Python...</span>
+      <div class="stats">
+        <div class="stat"><span class="label">Step</span><span class="value" id="step">0</span></div>
+        <div class="stat"><span class="label">Loss</span><span class="value" id="loss">-</span></div>
+        <div class="stat"><span class="label">Accuracy</span><span class="value" id="accuracy">-</span></div>
+      </div>
+    </div>
 
-  <p id="message">Loading...</p>
+    <div class="stage">
+      <div class="panel">
+        <div class="placing" role="group" aria-label="Color to place">
+          <span class="placing-label">Placing:</span>
+          <button id="pick-blue" class="pick" aria-pressed="true"><span class="swatch-dot"></span>Blue</button>
+          <button id="pick-red" class="pick" aria-pressed="false"><span class="swatch-square"></span>Red</button>
+        </div>
+        <canvas id="board"></canvas>
+        <p class="hint">The background is the network's guess: blue here, red there. Pale means unsure.</p>
+      </div>
 
-  <p>L = (a × b + c) × f, with b = -3, c = 10, f = -2</p>
+      <div class="side">
+        <div class="panel">
+          <p class="panel-title">Inside the network</p>
+          <canvas id="network"></canvas>
+          <div class="tooltip" id="network-tip"></div>
+          <p class="hint">Each circle shows what that neuron reacts to across the board. Lines are weights: blue positive, red negative, thicker is stronger. Hover for values.</p>
+        </div>
+        <div class="panel">
+          <p class="panel-title">Loss</p>
+          <canvas id="loss-chart"></canvas>
+        </div>
+      </div>
+    </div>
 
-  <p>
-    a = <span id="a-value">2.00</span>
-    <input type="range" id="a-slider" min="-7.5" max="7.5" step="0.1" value="2">
-  </p>
-
-  <p>L = <span id="L-value">?</span></p>
-  <p>a.grad = <span id="a-grad">?</span></p>
+    <footer>
+      Trained by my own Python (<code>train.py</code>) running in the browser with Pyodide.
+      Autograd engine based on <a href="https://github.com/karpathy/micrograd">micrograd</a> by Andrej Karpathy.
+    </footer>
+  </div>
 
   <script>
+    const SIZE = 400;
+    const GRID = 20;
+    const LR = 0.2;
+    const LAYERS = '[8, 8, 1]';
+    const BLUE = '#2a78d6';
+    const RED = '#e34948';
+    const INK = '#1d1d1b';
+    const NET_W = 440, NET_H = 320;
+    const LOSS_W = 440, LOSS_H = 130;
+
+    const board = document.getElementById('board');
+    const network = document.getElementById('network');
+    const chart = document.getElementById('loss-chart');
+    const tip = document.getElementById('network-tip');
+    const ctx = setupCanvas(board, SIZE, SIZE);
+    const netCtx = setupCanvas(network, NET_W, NET_H);
+    const chartCtx = setupCanvas(chart, LOSS_W, LOSS_H);
+
     let py;
+    let running = false;
+    let step = 0;
+    let losses = [];
+    let layout = null;
+    let hovered = null;
+    let placing = 1;
+
+    function setupCanvas(canvas, w, h) {
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = w * dpr;
+      canvas.height = h * dpr;
+      const c = canvas.getContext('2d');
+      c.setTransform(dpr, 0, 0, dpr, 0, 0);
+      return c;
+    }
 
     async function main() {
       py = await loadPyodide();
+      for (const name of ['back_propagation.py', 'neural_network.py', 'train.py']) {
+        const code = await (await fetch(name)).text();
+        py.FS.writeFile(name, code);
+      }
+      py.runPython(`
+from train import make_dataset, make_model, train_step, predict_fast, accuracy, get_weights, all_activations
+dots = make_dataset(30)
+model = make_model(2, ${LAYERS})
+centers = [-1 + (i + 0.5) * 2 / ${GRID} for i in range(${GRID})]
+`);
 
-      const response = await fetch('back_propagation.py');
-      const code = await response.text();
-      py.FS.writeFile('back_propagation.py', code);
+      document.getElementById('message').textContent = '';
+      for (const id of ['train-button', 'clear-button', 'reset-button']) document.getElementById(id).disabled = false;
+      document.getElementById('train-button').addEventListener('click', toggleTraining);
+      document.getElementById('clear-button').addEventListener('click', clearDots);
+      document.getElementById('reset-button').addEventListener('click', newNetwork);
+      document.getElementById('pick-blue').addEventListener('click', () => pickColor(1));
+      document.getElementById('pick-red').addEventListener('click', () => pickColor(-1));
+      board.addEventListener('click', addDot);
+      board.addEventListener('contextmenu', (event) => { event.preventDefault(); addDot(event, true); });
+      network.addEventListener('mousemove', networkHover);
+      network.addEventListener('mouseleave', () => { hovered = null; tip.style.display = 'none'; drawNetwork(); });
 
-      document.getElementById('message').textContent = 'Ready! Drag the slider.';
-      document.getElementById('a-slider').addEventListener('input', update);
-      update();
+      drawAll();
     }
 
-    function update() {
-      const a = Number(document.getElementById('a-slider').value);
-      document.getElementById('a-value').textContent = a.toFixed(2);
+    function drawAll() {
+      drawBoard();
+      drawNetwork();
+      drawLoss();
+    }
 
-      const result = py.runPython(`
-from back_propagation import Value
-a = Value(${a}, label='a')
-b = Value(-3.0, label='b')
-c = Value(10.0, label='c')
-f = Value(-2.0, label='f')
-e = a*b
-d = e + c
-L = d*f
-L.backward()
-[L.data, a.grad]
+    function dotCount() {
+      return py.runPython('len(dots)');
+    }
+
+    function trainSteps(n) {
+      if (dotCount() === 0) return;
+      const [loss, acc] = py.runPython(`
+for _ in range(${n}):
+    loss = train_step(model, dots, ${LR / (1 + step / 500)})
+[loss, accuracy(model, dots)]
 `).toJs();
+      step += n;
+      losses.push(loss);
+      document.getElementById('step').textContent = step;
+      document.getElementById('loss').textContent = loss.toFixed(3);
+      document.getElementById('accuracy').textContent = Math.round(acc * 100) + '%';
+    }
 
-      document.getElementById('L-value').textContent = result[0].toFixed(3);
-      document.getElementById('a-grad').textContent = result[1].toFixed(3);
+    function toggleTraining() {
+      running = !running;
+      document.getElementById('train-button').textContent = running ? 'Pause' : 'Train';
+      if (running) loop();
+    }
+
+    function loop() {
+      if (!running) return;
+      trainSteps(1);
+      drawAll();
+      requestAnimationFrame(loop);
+    }
+
+    function colorFor(v, maxAlpha) {
+      const s = Math.min(1, Math.abs(v));
+      return v > 0 ? `rgba(42, 120, 214, ${s * maxAlpha})` : `rgba(227, 73, 72, ${s * maxAlpha})`;
+    }
+
+    const background = Object.assign(document.createElement('canvas'), { width: GRID, height: GRID });
+
+    function toPixelX(x) { return (x + 1) / 2 * SIZE; }
+    function toPixelY(y) { return (1 - y) / 2 * SIZE; }
+
+    function drawBoard() {
+      ctx.clearRect(0, 0, SIZE, SIZE);
+
+      const grid = py.runPython('[[predict_fast(model, x, y) for x in centers] for y in centers]').toJs();
+      const bgCtx = background.getContext('2d');
+      bgCtx.clearRect(0, 0, GRID, GRID);
+      for (let row = 0; row < GRID; row++) {
+        for (let col = 0; col < GRID; col++) {
+          bgCtx.fillStyle = colorFor(grid[row][col], 0.45);
+          bgCtx.fillRect(col, GRID - 1 - row, 1, 1);
+        }
+      }
+      ctx.imageSmoothingEnabled = true;
+      ctx.drawImage(background, 0, 0, SIZE, SIZE);
+
+      const dots = py.runPython('dots').toJs();
+      for (const [x, y, label] of dots) {
+        const px = toPixelX(x);
+        const pyy = toPixelY(y);
+        ctx.fillStyle = label > 0 ? BLUE : RED;
+        ctx.strokeStyle = 'white';
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        if (label > 0) ctx.arc(px, pyy, 7, 0, Math.PI * 2);
+        else ctx.rect(px - 6.5, pyy - 6.5, 13, 13);
+        ctx.fill();
+        ctx.stroke();
+      }
+    }
+
+    function drawNetwork() {
+      netCtx.clearRect(0, 0, NET_W, NET_H);
+
+      const weightsProxy = py.runPython('get_weights(model)');
+      if (!weightsProxy) {
+        layout = null;
+        netCtx.fillStyle = '#5c5a55';
+        netCtx.font = '700 15px Nunito, sans-serif';
+        netCtx.textAlign = 'center';
+        netCtx.fillText('Write get_weights() in train.py to see the network here', NET_W / 2, NET_H / 2);
+        return;
+      }
+      const weights = weightsProxy.toJs({ dict_converter: Object.fromEntries });
+
+      const actsProxy = py.runPython('[[all_activations(model, x, y) for x in centers] for y in centers]');
+      const acts = actsProxy.toJs();
+      const hasActs = acts[0][0] != null;
+
+      const sizes = [2, ...weights.map((layer) => layer.length)];
+      const padLeft = 36, padRight = 52, padY = 26;
+      const colX = (i) => padLeft + (NET_W - padLeft - padRight) * i / (sizes.length - 1);
+      const rowY = (j, n) => n === 1 ? NET_H / 2 : padY + (NET_H - 2 * padY) * j / (n - 1);
+      const radius = Math.min(18, (NET_H - 2 * padY) / Math.max(...sizes) / 2 - 2);
+      const maxW = Math.max(1e-9, ...weights.flat().flatMap((n) => n.w.map(Math.abs)));
+
+      const lines = [];
+      weights.forEach((layer, li) => {
+        layer.forEach((neuron, j) => {
+          neuron.w.forEach((w, k) => {
+            lines.push({
+              x1: colX(li), y1: rowY(k, sizes[li]),
+              x2: colX(li + 1), y2: rowY(j, sizes[li + 1]),
+              w, from: [li, k], to: [li + 1, j],
+            });
+          });
+        });
+      });
+      const neurons = [];
+      sizes.forEach((n, layer) => {
+        for (let j = 0; j < n; j++) {
+          neurons.push({
+            layer, j, x: colX(layer), y: rowY(j, n), r: radius,
+            bias: layer > 0 ? weights[layer - 1][j].b : null,
+          });
+        }
+      });
+      layout = { lines, neurons, sizes };
+
+      const touches = (line) => hovered && hovered.kind === 'neuron'
+        && ((line.from[0] === hovered.layer && line.from[1] === hovered.j)
+          || (line.to[0] === hovered.layer && line.to[1] === hovered.j));
+
+      for (const line of lines) {
+        const t = Math.abs(line.w) / maxW;
+        let alpha = 0.15 + 0.85 * t;
+        if (hovered && hovered.kind === 'neuron' && !touches(line)) alpha *= 0.15;
+        if (hovered && hovered.kind === 'line' && hovered.line !== line) alpha *= 0.3;
+        netCtx.strokeStyle = line.w > 0 ? `rgba(42, 120, 214, ${alpha})` : `rgba(227, 73, 72, ${alpha})`;
+        netCtx.lineWidth = 0.6 + 4 * t;
+        netCtx.beginPath();
+        netCtx.moveTo(line.x1, line.y1);
+        netCtx.lineTo(line.x2, line.y2);
+        netCtx.stroke();
+      }
+
+      for (const n of neurons) {
+        const map = neuronMap(n, acts, hasActs);
+        netCtx.save();
+        netCtx.beginPath();
+        netCtx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
+        netCtx.fillStyle = '#fff';
+        netCtx.fill();
+        netCtx.clip();
+        if (map) {
+          netCtx.imageSmoothingEnabled = true;
+          netCtx.drawImage(map, n.x - n.r, n.y - n.r, n.r * 2, n.r * 2);
+        }
+        netCtx.restore();
+        const isHovered = hovered && hovered.kind === 'neuron' && hovered.layer === n.layer && hovered.j === n.j;
+        netCtx.strokeStyle = INK;
+        netCtx.lineWidth = isHovered ? 3 : 1.5;
+        netCtx.beginPath();
+        netCtx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
+        netCtx.stroke();
+      }
+
+      netCtx.fillStyle = INK;
+      netCtx.font = '800 13px Nunito, sans-serif';
+      netCtx.textAlign = 'right';
+      netCtx.fillText('x', colX(0) - radius - 6, rowY(0, 2) + 4);
+      netCtx.fillText('y', colX(0) - radius - 6, rowY(1, 2) + 4);
+      netCtx.textAlign = 'left';
+      netCtx.fillText('out', colX(sizes.length - 1) + radius + 6, NET_H / 2 + 4);
+    }
+
+    const mapCanvases = {};
+    function neuronMap(n, acts, hasActs) {
+      if (n.layer > 0 && !hasActs) return null;
+      const key = `${n.layer}:${n.j}`;
+      const canvas = mapCanvases[key] || (mapCanvases[key] = Object.assign(document.createElement('canvas'), { width: GRID, height: GRID }));
+      const c = canvas.getContext('2d');
+      c.clearRect(0, 0, GRID, GRID);
+      for (let row = 0; row < GRID; row++) {
+        for (let col = 0; col < GRID; col++) {
+          let v;
+          if (n.layer === 0) v = n.j === 0 ? (col + 0.5) / GRID * 2 - 1 : (row + 0.5) / GRID * 2 - 1;
+          else v = acts[row][col][n.layer - 1][n.j];
+          c.fillStyle = colorFor(v, 0.85);
+          c.fillRect(col, GRID - 1 - row, 1, 1);
+        }
+      }
+      return canvas;
+    }
+
+    function networkHover(event) {
+      if (!layout) return;
+      const rect = network.getBoundingClientRect();
+      const mx = (event.clientX - rect.left) / rect.width * NET_W;
+      const my = (event.clientY - rect.top) / rect.height * NET_H;
+
+      let found = null;
+      for (const n of layout.neurons) {
+        if (Math.hypot(mx - n.x, my - n.y) <= n.r + 2) found = { kind: 'neuron', layer: n.layer, j: n.j, n };
+      }
+      if (!found) {
+        let best = 5;
+        for (const line of layout.lines) {
+          const d = distanceToSegment(mx, my, line);
+          if (d < best) { best = d; found = { kind: 'line', line }; }
+        }
+      }
+
+      hovered = found;
+      if (!found) {
+        tip.style.display = 'none';
+      } else {
+        const last = layout.sizes.length - 1;
+        if (found.kind === 'neuron') {
+          const n = found.n;
+          tip.textContent = n.layer === 0 ? `input ${n.j === 0 ? 'x' : 'y'}`
+            : `${n.layer === last ? 'output neuron' : `layer ${n.layer}, neuron ${n.j + 1}`} · bias ${n.bias.toFixed(3)}`;
+        } else {
+          tip.textContent = `weight ${found.line.w.toFixed(3)}`;
+        }
+        tip.style.display = 'block';
+        const panel = network.parentElement.getBoundingClientRect();
+        tip.style.left = `${event.clientX - panel.left + 12}px`;
+        tip.style.top = `${event.clientY - panel.top - 34}px`;
+      }
+      drawNetwork();
+    }
+
+    function distanceToSegment(px, pyy, { x1, y1, x2, y2 }) {
+      const dx = x2 - x1, dy = y2 - y1;
+      const t = Math.max(0, Math.min(1, ((px - x1) * dx + (pyy - y1) * dy) / (dx * dx + dy * dy)));
+      return Math.hypot(px - (x1 + t * dx), pyy - (y1 + t * dy));
+    }
+
+    function drawLoss() {
+      chartCtx.clearRect(0, 0, LOSS_W, LOSS_H);
+      chartCtx.strokeStyle = '#dcd7cc';
+      chartCtx.lineWidth = 1;
+      chartCtx.beginPath();
+      chartCtx.moveTo(0, LOSS_H - 8.5);
+      chartCtx.lineTo(LOSS_W, LOSS_H - 8.5);
+      chartCtx.stroke();
+
+      if (losses.length < 2) {
+        chartCtx.fillStyle = '#5c5a55';
+        chartCtx.font = '700 14px Nunito, sans-serif';
+        chartCtx.textAlign = 'center';
+        chartCtx.fillText('Press Train to start', LOSS_W / 2, LOSS_H / 2);
+        return;
+      }
+
+      const maxLoss = Math.max(...losses);
+      chartCtx.strokeStyle = INK;
+      chartCtx.lineWidth = 2;
+      chartCtx.lineJoin = 'round';
+      chartCtx.beginPath();
+      losses.forEach((loss, i) => {
+        const x = i / (losses.length - 1) * (LOSS_W - 4) + 2;
+        const y = LOSS_H - 8 - loss / maxLoss * (LOSS_H - 20);
+        if (i === 0) chartCtx.moveTo(x, y);
+        else chartCtx.lineTo(x, y);
+      });
+      chartCtx.stroke();
+    }
+
+    function pickColor(label) {
+      placing = label;
+      document.getElementById('pick-blue').setAttribute('aria-pressed', label > 0);
+      document.getElementById('pick-red').setAttribute('aria-pressed', label < 0);
+    }
+
+    function addDot(event, opposite = false) {
+      const rect = board.getBoundingClientRect();
+      const x = (event.clientX - rect.left) / rect.width * 2 - 1;
+      const y = 1 - (event.clientY - rect.top) / rect.height * 2;
+      const label = opposite || event.shiftKey ? -placing : placing;
+      py.runPython(`dots.append((${x}, ${y}, ${label}))`);
+      drawBoard();
+    }
+
+    function clearDots() {
+      py.runPython('dots.clear()');
+      resetStats();
+      drawAll();
+    }
+
+    function newNetwork() {
+      py.runPython(`model = make_model(2, ${LAYERS})`);
+      resetStats();
+      drawAll();
+    }
+
+    function resetStats() {
+      step = 0;
+      losses = [];
+      document.getElementById('step').textContent = '0';
+      document.getElementById('loss').textContent = '-';
+      document.getElementById('accuracy').textContent = '-';
     }
 
     main();
