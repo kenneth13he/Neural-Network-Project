@@ -1,0 +1,15 @@
+# Python cache
+__pycache__/
+*.pyc
+
+# graphs made by draw_dot (regenerated every run)
+graph
+graph.svg
+
+# editor / OS files
+.vscode/
+.DS_Store
+
+# virtual environments
+venv/
+.venv/
