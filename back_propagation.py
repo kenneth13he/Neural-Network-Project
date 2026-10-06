@@ -1,5 +1,4 @@
 import math
-from draw_dot import draw_dot
 
 # based on micrograd by Andrej Karpathy (MIT license): https://github.com/karpathy/micrograd
 
@@ -133,6 +132,8 @@ class Value:
 
 # only runs when you run this file directly
 if __name__ == '__main__':
+    from draw_dot import draw_dot  # imported here so Value works without graphviz (like on the website)
+
     # test inputs
     a = Value(2.0, label='a')
     b = Value(-3.0, label='b')
