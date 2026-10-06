@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Neural Network Trainer</title>
+  <script src="https://cdn.jsdelivr.net/pyodide/v0.27.8/full/pyodide.js"></script>
+</head>
+<body>
+
+  <h1>Watch a neural network learn</h1>
+  <p>Click to place a blue dot. Shift-click to place a red dot. Press Train and watch the network learn to separate them.</p>
+
+  <p id="message">Loading Python...</p>
+
+  <p>
+    <button id="train-button">Train</button>
+    <button id="clear-button">Clear dots</button>
+    <button id="reset-button">New network</button>
+  </p>
+
+  <p>
+    Step: <span id="step">0</span>
+    &nbsp; Loss: <span id="loss">-</span>
+    &nbsp; Accuracy: <span id="accuracy">-</span>
+  </p>
+
+  <canvas id="board" width="400" height="400" style="border: 1px solid #999; cursor: crosshair;"></canvas>
+  <canvas id="loss-chart" width="400" height="150" style="border: 1px solid #999;"></canvas>
+
+  <!-- ids for your JavaScript:
+         message        the loading message
+         train-button   starts / pauses training
+         clear-button   removes all dots
+         reset-button   makes a brand new (untrained) network
+         step, loss, accuracy   the numbers to update
+         board          the canvas with the dots (400 x 400 pixels)
+         loss-chart     the canvas for the loss line (400 x 150 pixels)
+  -->
+
+  <script>
+    // ============================================================
+    // MILESTONE 2: load Python, train with a button, show the loss
+    // ============================================================
+
+    // STEP 1: an async function main() that:
+    //   - loads Pyodide
+    //   - fetches THREE files and writes them into Pyodide:
+    //       back_propagation.py, neural_network.py, train.py
+    //     (neural_network.py imports back_propagation, train.py imports neural_network)
+    //   - runs Python once to set up the dots and the model
+    //   - shows "Ready" and connects the buttons (step 3, step 6)
+    //   - draws the board for the first time (step 4)
+    //
+    //   example (loading several files with a loop):
+    //     let py;
+    //     async function main() {
+    //       py = await loadPyodide();
+    //       for (const name of ['first.py', 'second.py']) {
+    //         const code = await (await fetch(name)).text();
+    //         py.FS.writeFile(name, code);
+    //       }
+    //       py.runPython(`
+    //     from first import make_things
+    //     things = make_things()
+    //     `);
+    //     }
+    //
+    //   important: variables you make inside runPython STAY ALIVE between calls.
+    //   so if one runPython makes  model = make_model(),  a later runPython can still use model.
+    //
+    //   question: should the board start with some dots (make_dataset), or empty so the user draws them?
+
+
+
+    // STEP 2: a function trainSteps(n) that trains n steps and updates the numbers on the page
+    //   - runs train_step n times in Python, and returns the last loss
+    //   - updates step, loss and accuracy on the page
+    //   - careful: what happens if there are NO dots yet? (dividing by zero!)
+    //     check it in JavaScript or in Python, and skip training if there are no dots
+    //
+    //   example (running a Python loop and getting one number back):
+    //     const total = py.runPython(`
+    //     total = 0
+    //     for i in range(${n}):
+    //         total = total + i
+    //     total
+    //     `);
+    //     // a plain Python number comes back as a plain JS number (no .toJs() needed)
+
+
+
+    // STEP 3: the Train button starts and pauses a loop that keeps training
+    //   - use a variable running = true / false
+    //   - each frame: train a few steps, redraw, then ask for the next frame
+    //
+    //   example:
+    //     let running = false;
+    //
+    //     function loop() {
+    //       if (!running) return;          // stop when paused
+    //       trainSteps(1);
+    //       drawBoard();
+    //       requestAnimationFrame(loop);   // "call loop again on the next screen refresh"
+    //     }
+    //
+    //     document.getElementById('train-button').addEventListener('click', () => {
+    //       running = !running;            // flip between true and false
+    //       // TODO: change the button text to 'Pause' or 'Train'
+    //       if (running) loop();
+    //     });
+
+
+
+    // ============================================================
+    // MILESTONE 3: draw the dots
+    // ============================================================
+
+    // STEP 4: a function drawBoard() that draws every dot on the canvas
+    //   - get the dots from Python:  py.runPython('dots').toJs()  -> a list of [x, y, label]
+    //   - the dots go from -1 to 1, but the canvas goes from 0 to 400 pixels,
+    //     so you need to convert (and flip y, because on a canvas y goes DOWN)
+    //   - blue for label +1, red for label -1
+    //
+    //   example (canvas basics):
+    //     const canvas = document.getElementById('board');
+    //     const ctx = canvas.getContext('2d');      // the "pen" you draw with
+    //
+    //     ctx.clearRect(0, 0, canvas.width, canvas.height);   // wipe everything
+    //
+    //     ctx.fillStyle = 'green';
+    //     ctx.beginPath();
+    //     ctx.arc(200, 100, 6, 0, Math.PI * 2);     // a circle at (200, 100) with radius 6
+    //     ctx.fill();
+    //
+    //   example (converting from -1..1 to pixels):
+    //     function toPixelX(x) { return (x + 1) / 2 * 400; }
+    //     function toPixelY(y) { return (1 - y) / 2 * 400; }   // flipped: y = 1 is the TOP
+
+
+
+    // ============================================================
+    // MILESTONE 4 (your idea!): place your own dots by clicking
+    // ============================================================
+
+    // STEP 5: when the board is clicked, add a dot where the mouse is
+    //   - click = blue (+1), shift-click = red (-1)
+    //   - convert the mouse position from pixels back to -1..1 (the opposite of step 4)
+    //   - add it to the dots list in Python, then redraw
+    //   - it should work while training is running too!
+    //
+    //   example (getting the mouse position inside the canvas):
+    //     canvas.addEventListener('click', (event) => {
+    //       const rect = canvas.getBoundingClientRect();
+    //       const px = event.clientX - rect.left;    // pixels from the left edge
+    //       const py_ = event.clientY - rect.top;    // pixels from the top edge
+    //       const isShift = event.shiftKey;          // true if shift was held down
+    //       // TODO: convert to x, y between -1 and 1
+    //       // TODO: py.runPython(`dots.append((${x}, ${y}, ${label}))`)
+    //       // TODO: redraw
+    //     });
+    //
+    //   (careful: don't call your pixel variable "py", you already use py for Pyodide!)
+
+
+
+    // STEP 6: the other two buttons
+    //   - Clear dots: empty the dots list in Python (look up: list.clear()), reset the loss chart, redraw
+    //   - New network: make a fresh model in Python (make_model()), reset the step count, redraw
+    //
+    //   question: why is "New network" useful? try training, then adding dots in a new spot,
+    //   compare: keep training the old network vs start a new one
+
+
+
+    // ============================================================
+    // MILESTONE 5: color the background with the network's guess
+    // ============================================================
+
+    // STEP 7: inside drawBoard(), BEFORE drawing the dots, fill the background
+    //   - split the board into a grid, like 20 x 20 squares (each square is 20 pixels)
+    //   - for each square, ask the network to predict at the square's center
+    //     (use predict() from train.py; ask for the WHOLE grid in one runPython, it's much faster)
+    //   - color the square light blue if the guess is positive, light red if negative
+    //   - stronger guess = stronger color
+    //
+    //   example (getting a whole grid back in one call):
+    //     const grid = py.runPython(`
+    //     [[some_function(x, y) for x in [-0.95, -0.85, -0.75]] for y in [0.95, 0.85, 0.75]]
+    //     `).toJs();
+    //     // grid[row][col] is a number. you'll need to make the lists of centers yourself
+    //
+    //   example (see-through colors and squares):
+    //     ctx.fillStyle = 'rgba(0, 0, 255, 0.3)';   // blue, 30% strong
+    //     ctx.fillRect(40, 60, 20, 20);             // a 20x20 square at pixel (40, 60)
+    //
+    //   if it feels slow: try a 15 x 15 grid, or a smaller network
+
+
+
+    // ============================================================
+    // MILESTONE 6: draw the loss over time
+    // ============================================================
+
+    // STEP 8: keep a list of every loss, and draw it as a line on the loss-chart canvas
+    //   - add the loss to the list in trainSteps()
+    //   - x: step number, spread across the width
+    //   - y: loss, with 0 at the BOTTOM of the chart
+    //
+    //   example (drawing a line through points):
+    //     ctx.strokeStyle = 'purple';
+    //     ctx.beginPath();
+    //     ctx.moveTo(0, 150);       // start here
+    //     ctx.lineTo(100, 80);      // line to here
+    //     ctx.lineTo(200, 120);     // then here
+    //     ctx.stroke();             // actually draw it
+
+
+
+    // STEP 9: start everything
+    //   example:
+    //     main();
+
+  </script>
+</body>
+</html>
