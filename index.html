@@ -4,66 +4,62 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Backprop Playground</title>
-
-  <!-- Pyodide: runs Python in the browser. (version 0.27.8 works with a plain script tag) -->
   <script src="https://cdn.jsdelivr.net/pyodide/v0.27.8/full/pyodide.js"></script>
 </head>
 <body>
 
-  <!-- STEP 1: a heading and a short line saying what this page is -->
+  <h1>Back propagation online visualization with neural network training</h1>
+  <p> Visualize machine learning model using back propagation to separate dots of 2 colours</p>
 
+  <p id="message">Loading...</p>
 
+  <p>L = (a × b + c) × f, with b = -3, c = 10, f = -2</p>
 
-  <!-- STEP 2: a "Loading Python..." message
-       give it an id so JavaScript can change it later, e.g. id="status" -->
+  <p>
+    a = <span id="a-value">2.00</span>
+    <input type="range" id="a-slider" min="-7.5" max="7.5" step="0.1" value="2">
+  </p>
 
-
-
-  <!-- STEP 3: a slider for a
-       - look up: <input type="range">  (you'll need min, max, step, value, and an id)
-       - also show the slider's current value next to it (a <span> with an id) -->
-
-
-
-  <!-- STEP 4: places to show the results: L and a.grad
-       - each one needs an id so JavaScript can fill it in -->
-
-
+  <p>L = <span id="L-value">?</span></p>
+  <p>a.grad = <span id="a-grad">?</span></p>
 
   <script>
-    // STEP 5: write an async function main() that:
-    //   - loads Pyodide:   const py = await loadPyodide();
-    //   - downloads your back_propagation.py:
-    //       look up fetch() and .text()
-    //   - saves it into Pyodide's pretend file system so Python can import it:
-    //       look up py.FS.writeFile
-    //   - changes the status message to say Python is ready
+    let py;
 
+    async function main() {
+      py = await loadPyodide();
 
+      const response = await fetch('back_propagation.py');
+      const code = await response.text();
+      py.FS.writeFile('back_propagation.py', code);
 
-    // STEP 6: write a function update() that:
-    //   - reads the slider's value  (look up: .value, and Number())
-    //   - runs Python with that value:
-    //       py.runPython(`...your python code here...`)
-    //     the Python should: import Value, build the graph with a = the slider value,
-    //     call L.backward(), and end with a line that produces the result you want back
-    //     (hint: the last line of runPython's code is what gets returned to JavaScript,
-    //      e.g. a list like [L.data, a.grad])
-    //   - puts the numbers onto the page (look up: document.getElementById, .textContent)
-    //
-    //   careful: py is created inside main(), so update() needs to be able to reach it.
-    //   where should py be declared?
+      document.getElementById('message').textContent = 'Ready! Drag the slider.';
+      document.getElementById('a-slider').addEventListener('input', update);
+      update();
+    }
 
+    function update() {
+      const a = Number(document.getElementById('a-slider').value);
+      document.getElementById('a-value').textContent = a.toFixed(2);
 
+      const result = py.runPython(`
+from back_propagation import Value
+a = Value(${a}, label='a')
+b = Value(-3.0, label='b')
+c = Value(10.0, label='c')
+f = Value(-2.0, label='f')
+e = a*b
+d = e + c
+L = d*f
+L.backward()
+[L.data, a.grad]
+`).toJs();
 
-    // STEP 7: make the slider call update() every time it moves
-    //   - look up: addEventListener('input', ...)
-    //   - also call update() once at the end of main(), so the numbers show right away
+      document.getElementById('L-value').textContent = result[0].toFixed(3);
+      document.getElementById('a-grad').textContent = result[1].toFixed(3);
+    }
 
-
-
-    // STEP 8: start everything by calling main()
-
+    main();
   </script>
 </body>
 </html>
