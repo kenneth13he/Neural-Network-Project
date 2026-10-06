@@ -1,6 +1,6 @@
 import random
 from neural_network import MLP
-
+import math
 
 def make_dataset(n):
     dots = []
@@ -34,6 +34,21 @@ def train_step(model, dots, lr):
 def predict(model, x, y):
     pred = model([x, y])
     return pred.data
+
+
+def predict_fast(model, x, y):
+    inputs = [x, y]
+    for layer in model.layers:
+        outputs = []
+        for neuron in layer.neurons:
+            total = neuron.b.data
+            for w, inp in zip(neuron.w, inputs):
+                total += w.data * inp
+            if neuron.nonlin:
+                total = math.tanh(total)
+            outputs.append(total)
+        inputs = outputs
+    return inputs[0]
 
 
 def accuracy(model, dots):
