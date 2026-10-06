@@ -61,6 +61,20 @@ def get_weights(model):
     return layers
 
 
+def get_gradients(model):
+    layers = []
+    for layer in model.layers:
+        neurons = []
+        for neuron in layer.neurons:
+            neurons.append({'w': [w.grad for w in neuron.w], 'b': neuron.b.grad})
+        layers.append(neurons)
+    return layers
+
+
+def dot_errors(model, dots):
+    return [(predict_fast(model, x, y) - label)**2 for x, y, label in dots]
+
+
 def all_activations(model, x, y):
     inputs = [x, y]
     every_layer = []

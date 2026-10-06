@@ -73,6 +73,11 @@
     }
     .panel-title { font-size: 15px; font-weight: 800; margin: 0 0 10px; }
 
+    .panel-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+    .panel-head .panel-title { margin: 0; }
+    .view-switch { display: flex; gap: 6px; }
+    .view-switch button.pick { font-size: 14px; padding: 5px 12px; }
+
     .placing { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
     .placing-label { font-weight: 800; font-size: 15px; margin-right: 2px; }
     button.pick {
@@ -111,6 +116,7 @@
 
     <div class="toolbar">
       <button id="train-button" class="go" disabled>Train</button>
+      <button id="step-button" disabled title="Do exactly one training step">Step</button>
       <button id="clear-button" disabled>Clear dots</button>
       <button id="reset-button" disabled>New network</button>
       <span id="message">Loading Python...</span>
@@ -129,15 +135,21 @@
           <button id="pick-red" class="pick" aria-pressed="false"><span class="swatch-square"></span>Red</button>
         </div>
         <canvas id="board"></canvas>
-        <p class="hint">The background is the network's guess: blue here, red there. Pale means unsure.</p>
+        <p class="hint" id="board-hint"></p>
       </div>
 
       <div class="side">
         <div class="panel">
-          <p class="panel-title">Inside the network</p>
+          <div class="panel-head">
+            <p class="panel-title">Inside the network</p>
+            <div class="view-switch" role="group" aria-label="What the lines show">
+              <button id="view-weights" class="pick" aria-pressed="true">Weights</button>
+              <button id="view-grads" class="pick" aria-pressed="false">Gradients</button>
+            </div>
+          </div>
           <canvas id="network"></canvas>
           <div class="tooltip" id="network-tip"></div>
-          <p class="hint">Each circle shows what that neuron reacts to across the board. Lines are weights: blue positive, red negative, thicker is stronger. Hover for values.</p>
+          <p class="hint" id="network-hint"></p>
         </div>
         <div class="panel">
           <p class="panel-title">Loss</p>
@@ -178,6 +190,18 @@
     let layout = null;
     let hovered = null;
     let placing = 1;
+    let view = 'weights';
+
+    const HINTS = {
+      weights: {
+        board: "The background is the network's guess: blue here, red there. Pale means unsure.",
+        network: 'Each circle shows what that neuron reacts to across the board. Lines are weights: blue positive, red negative, thicker is stronger. Hover for values.',
+      },
+      grads: {
+        board: 'Rings show how wrong the network is about each dot. The most wrong dots pull hardest on the gradients.',
+        network: "Lines show each weight's gradient from the last step: blue is being pushed up, red pushed down, thicker is a bigger push. Press Step to watch one update at a time.",
+      },
+    };
 
     function setupCanvas(canvas, w, h) {
       const dpr = window.devicePixelRatio || 1;
@@ -195,15 +219,18 @@
         py.FS.writeFile(name, code);
       }
       py.runPython(`
-from train import make_dataset, make_model, train_step, predict_fast, accuracy, get_weights, all_activations
+from train import make_dataset, make_model, train_step, predict_fast, accuracy, get_weights, get_gradients, dot_errors, all_activations
 dots = make_dataset(30)
 model = make_model(2, ${LAYERS})
 centers = [-1 + (i + 0.5) * 2 / ${GRID} for i in range(${GRID})]
 `);
 
       document.getElementById('message').textContent = '';
-      for (const id of ['train-button', 'clear-button', 'reset-button']) document.getElementById(id).disabled = false;
+      for (const id of ['train-button', 'step-button', 'clear-button', 'reset-button']) document.getElementById(id).disabled = false;
       document.getElementById('train-button').addEventListener('click', toggleTraining);
+      document.getElementById('step-button').addEventListener('click', singleStep);
+      document.getElementById('view-weights').addEventListener('click', () => setView('weights'));
+      document.getElementById('view-grads').addEventListener('click', () => setView('grads'));
       document.getElementById('clear-button').addEventListener('click', clearDots);
       document.getElementById('reset-button').addEventListener('click', newNetwork);
       document.getElementById('pick-blue').addEventListener('click', () => pickColor(1));
@@ -213,6 +240,21 @@ centers = [-1 + (i + 0.5) * 2 / ${GRID} for i in range(${GRID})]
       network.addEventListener('mousemove', networkHover);
       network.addEventListener('mouseleave', () => { hovered = null; tip.style.display = 'none'; drawNetwork(); });
 
+      setView('weights');
+    }
+
+    function setView(v) {
+      view = v;
+      document.getElementById('view-weights').setAttribute('aria-pressed', v === 'weights');
+      document.getElementById('view-grads').setAttribute('aria-pressed', v === 'grads');
+      document.getElementById('board-hint').textContent = HINTS[v].board;
+      document.getElementById('network-hint').textContent = HINTS[v].network;
+      drawAll();
+    }
+
+    function singleStep() {
+      if (running) toggleTraining();
+      trainSteps(1);
       drawAll();
     }
 
@@ -279,6 +321,20 @@ for _ in range(${n}):
       ctx.drawImage(background, 0, 0, SIZE, SIZE);
 
       const dots = py.runPython('dots').toJs();
+
+      if (view === 'grads') {
+        const errors = py.runPython('dot_errors(model, dots)').toJs();
+        dots.forEach(([x, y], i) => {
+          const pull = Math.min(1, Math.sqrt(errors[i]) / 2);
+          if (pull < 0.05) return;
+          ctx.strokeStyle = `rgba(29, 29, 27, ${0.25 + 0.5 * pull})`;
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(toPixelX(x), toPixelY(y), 9 + 18 * pull, 0, Math.PI * 2);
+          ctx.stroke();
+        });
+      }
+
       for (const [x, y, label] of dots) {
         const px = toPixelX(x);
         const pyy = toPixelY(y);
@@ -306,6 +362,8 @@ for _ in range(${n}):
         return;
       }
       const weights = weightsProxy.toJs({ dict_converter: Object.fromEntries });
+      const grads = py.runPython('get_gradients(model)').toJs({ dict_converter: Object.fromEntries });
+      const maxG = Math.max(0, ...grads.flat().flatMap((n) => n.w.map(Math.abs)));
 
       const actsProxy = py.runPython('[[all_activations(model, x, y) for x in centers] for y in centers]');
       const acts = actsProxy.toJs();
@@ -325,7 +383,7 @@ for _ in range(${n}):
             lines.push({
               x1: colX(li), y1: rowY(k, sizes[li]),
               x2: colX(li + 1), y2: rowY(j, sizes[li + 1]),
-              w, from: [li, k], to: [li + 1, j],
+              w, g: grads[li][j].w[k], from: [li, k], to: [li + 1, j],
             });
           });
         });
@@ -336,6 +394,7 @@ for _ in range(${n}):
           neurons.push({
             layer, j, x: colX(layer), y: rowY(j, n), r: radius,
             bias: layer > 0 ? weights[layer - 1][j].b : null,
+            biasGrad: layer > 0 ? grads[layer - 1][j].b : null,
           });
         }
       });
@@ -345,12 +404,17 @@ for _ in range(${n}):
         && ((line.from[0] === hovered.layer && line.from[1] === hovered.j)
           || (line.to[0] === hovered.layer && line.to[1] === hovered.j));
 
+      const showGrads = view === 'grads';
+      const noGrads = showGrads && maxG === 0;
+
       for (const line of lines) {
-        const t = Math.abs(line.w) / maxW;
+        const t = showGrads ? (noGrads ? 0 : Math.abs(line.g) / maxG) : Math.abs(line.w) / maxW;
+        const goingUp = showGrads ? line.g < 0 : line.w > 0;
         let alpha = 0.15 + 0.85 * t;
+        if (noGrads) alpha = 0.08;
         if (hovered && hovered.kind === 'neuron' && !touches(line)) alpha *= 0.15;
         if (hovered && hovered.kind === 'line' && hovered.line !== line) alpha *= 0.3;
-        netCtx.strokeStyle = line.w > 0 ? `rgba(42, 120, 214, ${alpha})` : `rgba(227, 73, 72, ${alpha})`;
+        netCtx.strokeStyle = goingUp ? `rgba(42, 120, 214, ${alpha})` : `rgba(227, 73, 72, ${alpha})`;
         netCtx.lineWidth = 0.6 + 4 * t;
         netCtx.beginPath();
         netCtx.moveTo(line.x1, line.y1);
@@ -386,6 +450,19 @@ for _ in range(${n}):
       netCtx.fillText('y', colX(0) - radius - 6, rowY(1, 2) + 4);
       netCtx.textAlign = 'left';
       netCtx.fillText('out', colX(sizes.length - 1) + radius + 6, NET_H / 2 + 4);
+
+      if (noGrads) {
+        const msg = 'Press Step or Train to see the gradients';
+        netCtx.font = '800 15px Nunito, sans-serif';
+        netCtx.textAlign = 'center';
+        const w = netCtx.measureText(msg).width + 28;
+        netCtx.fillStyle = INK;
+        netCtx.beginPath();
+        netCtx.roundRect(NET_W / 2 - w / 2, NET_H / 2 - 18, w, 36, 10);
+        netCtx.fill();
+        netCtx.fillStyle = '#fff';
+        netCtx.fillText(msg, NET_W / 2, NET_H / 2 + 5);
+      }
     }
 
     const mapCanvases = {};
@@ -433,9 +510,13 @@ for _ in range(${n}):
         if (found.kind === 'neuron') {
           const n = found.n;
           tip.textContent = n.layer === 0 ? `input ${n.j === 0 ? 'x' : 'y'}`
-            : `${n.layer === last ? 'output neuron' : `layer ${n.layer}, neuron ${n.j + 1}`} · bias ${n.bias.toFixed(3)}`;
+            : `${n.layer === last ? 'output neuron' : `layer ${n.layer}, neuron ${n.j + 1}`} · bias ${n.bias.toFixed(3)}`
+              + (view === 'grads' ? ` · gradient ${n.biasGrad.toFixed(3)}` : '');
         } else {
-          tip.textContent = `weight ${found.line.w.toFixed(3)}`;
+          const { w, g } = found.line;
+          tip.textContent = view === 'grads'
+            ? `weight ${w.toFixed(3)} · gradient ${g.toFixed(3)} · ${g === 0 ? 'not moving' : g < 0 ? 'moving up' : 'moving down'}`
+            : `weight ${w.toFixed(3)}`;
         }
         tip.style.display = 'block';
         const panel = network.parentElement.getBoundingClientRect();

@@ -1,75 +1,71 @@
-# Neural Network Project
+# Watch a Neural Network Learn
 
-A tiny neural network library built from scratch in Python, with diagrams of how values and gradients flow through each calculation.
+**[▶ Try it live](https://kenneth13he.github.io/Neural-Network-Project/)**
 
-The goal is to turn this into an **interactive learning tool**, where you can change values and watch backpropagation update in real time. That part is still being built; right now the project has the engine, the neural network, and static graph drawing.
+An interactive page where you place blue and red dots, press **Train**, and watch a neural network learn to separate them. You see its decision boundary, what each neuron has learned, and the gradients that move every weight.
 
-## What's inside
+The network runs on a **from-scratch autograd engine written in Python**. No PyTorch or TensorFlow is involved: every gradient comes from a small `Value` class, and the Python runs right in your browser with [Pyodide](https://pyodide.org).
+
+![The trainer after learning an XOR pattern](images/trainer.png)
+
+## What you can do
+
+- **Draw your own data.** Tap the board to place dots, switching between blue and red with the **Placing** toggle. Add dots mid-training and watch the network adapt.
+- **Watch it learn.** The background shows the network's guess at every spot on the board, and pale areas are where it's unsure.
+- **Look inside the network.** Each neuron shows a tiny map of what it reacts to. First-layer neurons learn straight cuts; the second layer combines them into curves and corners.
+- **See backpropagation happen.** Switch the network view to **Gradients** to see which way each weight is being pushed, and press **Step** to run one update at a time. Rings on the board show how wrong the network is about each dot: the most wrong dots pull hardest.
+
+![Gradients view: rings show each dot's error, lines show each weight's gradient](images/gradients.png)
+
+## How it works
+
+Every training step does four things, all in Python (`train.py`):
+
+1. **Forward:** run every dot through the network to get a prediction.
+2. **Loss:** measure how wrong it is: the average of `(prediction - label)²`.
+3. **Backward:** call `loss.backward()`, which uses the chain rule to give every weight a gradient.
+4. **Update:** nudge every weight against its gradient: `w -= learning_rate × gradient`.
+
+The learning rate starts at 0.2 and shrinks over time, so the boundary settles instead of wiggling. Drawing the background uses `predict_fast`, a plain-number forward pass that skips building the autograd graph. That makes it about 30× faster, since drawing doesn't need gradients.
+
+## How this differs from TensorFlow Playground
+
+Google's [TensorFlow Playground](https://playground.tensorflow.org) is a well-known site with a similar look. This project is different in two ways:
+
+- **The engine is built from scratch.** The autograd engine (`back_propagation.py`) and the training loop are small enough to read in a few minutes.
+- **It shows backpropagation itself**, not just its results: per-weight gradients, per-dot error, and single-step updates.
+
+## Files
 
 | File | What it does |
 |---|---|
-| `back_propagation.py` | `Value`, a number that remembers how it was made and can compute its own gradient with `.backward()` |
-| `neural_network.py` | `Neuron`, `Layer`, and `MLP`, a small neural network built out of `Value`s |
-| `draw_dot.py` | Draws the calculation graph, showing each value's data and gradient |
+| `back_propagation.py` | `Value`: a number that remembers how it was made and computes its own gradient with `.backward()` |
+| `neural_network.py` | `Neuron`, `Layer` and `MLP`: a neural network built out of `Value`s |
+| `train.py` | Datasets, the training step, fast prediction, and helpers that read weights, gradients and activations for the page |
+| `index.html` | The interactive page. It loads the three Python files above and draws everything |
+| `nudge.py` | An experiment showing that a gradient really predicts how the output changes when an input is nudged |
+| `draw_dot.py` | Draws a computation graph with Graphviz (for the command line) |
 
-## Setup
+## Run it locally
 
-You need Python 3 and the Graphviz program (used to draw the graphs).
-
-```bash
-# install Graphviz (Mac)
-brew install graphviz
-
-# install the Python package
-python3 -m pip install -r requirements.txt
-```
-
-On Windows or Linux, get Graphviz from [graphviz.org/download](https://graphviz.org/download/).
-
-## Usage
-
-**Draw a calculation and its gradients:**
+The page has to be served over HTTP, because opening the file directly blocks it from loading the Python files:
 
 ```bash
-python3 back_propagation.py
+python3 -m http.server
 ```
 
-This builds `L = (a*b + c) * f`, runs backpropagation, and opens `graph.svg` showing every value and its gradient.
+Then open http://localhost:8000.
 
-**Use it in your own code:**
+To train from the command line instead:
 
-```python
-from back_propagation import Value
-from draw_dot import draw_dot
-
-a = Value(2.0, label='a')
-b = Value(-3.0, label='b')
-c = a * b; c.label = 'c'
-
-c.backward()
-print(a.grad)  # -3.0: increasing a by 1 changes c by about -3
-
-draw_dot(c).render('graph', view=True)
+```bash
+python3 train.py
 ```
 
-**Train a small network:**
+`draw_dot.py` also needs Graphviz: `brew install graphviz` (Mac), then `python3 -m pip install -r requirements.txt`.
 
-```python
-from neural_network import MLP
+## How I built it
 
-model = MLP(3, [4, 4, 1])  # 3 inputs -> 4 neurons -> 4 neurons -> 1 output
-xs = [[2, 3, -1], [3, -1, 0.5], [0.5, 1, 1], [1, 1, -1]]
-ys = [1, -1, -1, 1]
-
-for step in range(50):
-    loss = sum((model(x) - y)**2 for x, y in zip(xs, ys))
-    model.zero_grad()
-    loss.backward()
-    for p in model.parameters():
-        p.data -= 0.05 * p.grad
-    print(step, loss.data)
-```
-
-## Credit
-
-Based on [micrograd](https://github.com/karpathy/micrograd) by Andrej Karpathy (MIT license), and his video [The spelled-out intro to neural networks and backpropagation](https://www.youtube.com/watch?v=VMj-3S1tku0).
+- I learned how backpropagation works by building the autograd engine and neural network following Andrej Karpathy's [micrograd](https://github.com/karpathy/micrograd) (MIT license) and his video [The spelled-out intro to neural networks and backpropagation](https://www.youtube.com/watch?v=VMj-3S1tku0).
+- I wrote the nudge experiment and the training code (dataset, loss, gradient descent, fast prediction, learning rate decay) myself, with guidance from Claude Code.
+- The web interface was built with help from Claude Code. The interactive ideas, like drawing your own dots, are mine.
