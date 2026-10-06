@@ -67,5 +67,5 @@ python3 train.py
 ## How I built it
 
 - I learned how backpropagation works by building the autograd engine and neural network following Andrej Karpathy's [micrograd](https://github.com/karpathy/micrograd) (MIT license) and his video [The spelled-out intro to neural networks and backpropagation](https://www.youtube.com/watch?v=VMj-3S1tku0).
-- I wrote the nudge experiment and the training code (dataset, loss, gradient descent, fast prediction, learning rate decay) myself, with guidance from Claude Code.
-- The web interface was built with help from Claude Code. The interactive ideas, like drawing your own dots, are mine.
+- I wrote the nudge experiment and the training code (dataset, loss, gradient descent, fast prediction, learning rate decay) myself.
+- The web interface was built with guidance from Claude Code. The interactive ideas, like drawing your own dots, are mine.
