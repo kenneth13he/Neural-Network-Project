@@ -1,6 +1,6 @@
 # Watch a Neural Network Learn
 
-**[▶ Try it live](https://kenneth13he.github.io/Neural-Network-Project/)**
+**[▶ Try it live](https://kenneth13he.github.io/Neural-Network-Visualizer/)**
 
 An interactive page where you place blue and red dots, press **Train**, and watch a neural network learn to separate them. You see its decision boundary, what each neuron has learned, and the gradients that move every weight.
 
